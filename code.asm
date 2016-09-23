@@ -1,55 +1,161 @@
+%macro sleep 0
+	pusha
+	mov ah, 0x86
+	int 0x15
+	popa
+%endmacro
+
 	section .text
 
+; TODO zufallszahlen
+; TODO lodsw untersuchen
+; TODO print_brick optimieren ähnlich wie check_collision
+; TODO volle zeilen löschen
+
 ; ----------------------------------------------------------------------
-	call clear_screen
 	xor ax, ax                   ; init ds for lodsb
 	mov ds, ax
 
 	;call initial_animation
-	;xor ax, ax                   ; wait for keyboard
-	;int 0x16
-	;call clear_screen
-
 	call init_screen
 
-	; init seed
-;	mov ah, 2                    ; get time
-;	int 0x1a                     ; ch-h, cl-min, dh-sec
-;	mov ax, cx
-;	mov dl, dh
-;	mul dx
-;	xor dx, ax                   ; result in dx
-
-next_brick:
+new_brick:
+	mov word [delay + 0x7c00], 500 ; time
 	call select_brick            ; returns the selected brick in AL
-	mov dh, 4                    ; start at row 4
-	mov dl, 38                   ; and column 38
+	mov dx, 0x0426               ; start at row 4 and col 38
+loop:
 	mov bx, 9                    ; show brick
 	call print_brick
 
-	mov cx, 10
-	call wait_abit
+; if you modify AL or DX here, you should know what you're doing
+wait_or_keyboard:
+	mov cx, word [delay + 0x7c00]
+wait_a:
+	pusha
+	xor cx, cx
+	mov dx, 100                  ; wait 100 microseconds
+	sleep
+	;call wait_abit
+	popa
 
-	xor bx, bx                   ; clear brick
+	push ax
+	mov ah, 1                    ; check for keystroke
+	int 0x16                     ; http://www.ctyme.com/intr/rb-1755.htm
+	mov bx, ax
+	pop ax
+	jz no_key                    ; no keystroke
+	push bx
+	call clear_brick
+	pop bx
+
+	cmp bh, 0x4b                 ; left arrow
+	je left_arrow                ; http://stackoverflow.com/questions/16939449/how-to-detect-arrow-keys-in-assembly
+	cmp bh, 0x48                 ; up arrow
+	je up_arrow
+	cmp bh, 0x4d
+	je right_arrow
+	cmp bh, 0x50
+	je down_arrow
+	jmp clear_keys
+down_arrow:
+	mov word [delay + 0x7c00], 30
+	jmp clear_keys
+left_arrow:
+	dec dl
+	call check_collision
+	cmp bl, 0
+	je clear_keys                 ; no collision
+	inc dl
+	jmp clear_keys
+right_arrow:
+	inc dl
+	call check_collision
+	cmp bl, 0
+	je clear_keys                ; no collision
+	dec dl
+	jmp clear_keys
+up_arrow:
+	; TODO
+clear_keys:
+	mov bx, 9
 	call print_brick
-	jmp next_brick
+	push ax
+	xor ah, ah                   ; remove key from buffer
+	int 0x16
+	pop ax
+no_key:
+	loop wait_a
 
-	db 0
+	call clear_brick
+	inc dh                       ; increase row
+	call check_collision
+	cmp bl, 0
+	je no_collision
+	dec dh
+	mov bx, 9
+	call print_brick
+	jmp new_brick
+no_collision:
+	jmp loop
+
+
+
+
+; DX = position (DH = row), AL = brick
+; return BL = 0 -> no collision
+check_collision:
+	pusha
+	call brick_offset            ; result in SI
+	lodsb
+	mov ah, al
+	lodsb
+	;call print_ax
+
+	xor bx, bx
+	mov cx, 4
+cc:
+	push cx
+	mov cl, 4
+dd:
+	test ax, 1000000000000000b
+	jz is_zero
+
+	push ax
+	mov ah, 2                    ; set cursor position, BH = 0
+	int 0x10
+	mov ah, 8                    ; read character and attribute
+	int 0x10
+	shr ah, 4                    ; background color
+	cmp ah, 0                    ; check if color is black
+	je is_zero_x
+	inc bl
+
+is_zero_x:
+	pop ax
+is_zero:
+	shl ax, 1
+	inc dl
+	loop dd
+	sub dl, 4
+	inc dh
+	pop cx
+	loop cc
+
+	popa
+	ret
+
+; ======================================================================
 
 select_brick:
 	mov ah, 2                    ; get time
 	int 0x1a
-	mov ax, cx
-	mov dl, dh
-	mul dx                       ; result in dx:ax
-	xor dx, ax                   ; result in dx
 	mov ax, word [seed_value + 0x7c00]
-	xor ax, dx
+	mul dx                       ; result in dx:ax
 	mov word [seed_value + 0x7c00], ax
 	xor dx, dx
 	mov bx, 7
 	div bx
-	mov al, dl
+	xchg ax, dx
 	ret
 
 ; TODO below mem optimized
@@ -65,7 +171,15 @@ clear_screen:
 	ret
 
 ; ======================================================================
+brick_offset:
+	xor ah, ah                   ; compute the offset of the brick
+	shl ax, 3                    ; ax = ax * 8
+	xchg si, ax                  ; mov si, ax
+	add si, bricks + 0x7c00
+	ret
 
+clear_brick:
+	xor bx, bx
 ; AL = number of brick
 ; DL = column
 ; DH = row
@@ -81,10 +195,7 @@ print_brick:
 	or bl, bh
 	xor bh, bh
 print_brick_no_color:
-	xor ah, ah                   ; compute the offset of the brick
-	shl ax, 3                    ; ax = ax * 8
-	mov si, ax
-	add si, bricks + 0x7c00
+	call brick_offset             ; result in si
 
 	; bl = color
 	; ds:si = address of brick
@@ -141,6 +252,7 @@ cursor_right:
 ; ----------------------------------------------------------------------
 
 init_screen:
+	call clear_screen
 	mov cx, 18                   ; 18 rows
 	mov dh, 3                    ; row 3
 init_screen_a:
@@ -176,66 +288,78 @@ init_screen_write_x:
 ; ----------------------------------------------------------------------
 
 initial_animation:
-	mov ah, 2                    ; set cursor position
-	xor bx, bx
-	mov dh, 5
-	mov dl, 10
-	int 0x10
-	mov si, message + 0x7c00     ; MBR is loaded at address 0000:7C00
+;	call clear_screen
+;	mov ah, 2                    ; set cursor position
+;	xor bx, bx
+;	mov dh, 5
+;	mov dl, 10
+;	int 0x10
+;	mov si, message + 0x7c00     ; MBR is loaded at address 0000:7C00
 initial_animation_next:
-	cld
-	lodsb
-	cmp al, 0
-	jne initial_animation_do
-	ret
+;	cld
+;	lodsb
+;	cmp al, 0
+;	jne initial_animation_do
+;	xor ax, ax                   ; wait for keyboard
+;	int 16h
+;	ret
 initial_animation_do:
-	mov bx, 0x0a                 ; write character
-	mov cx, 1
-	mov ah, 9
-	int 0x10
-	call cursor_right
-	mov cx, 2                    ; wait 2x65536 microseconds
-	call wait_abit
-	jmp initial_animation_next
+;	mov bx, 0x0a                 ; write character
+;	mov cx, 1
+;	mov ah, 9
+;	int 0x10
+;	call cursor_right
+;	push dx
+;	mov cx, 2                    ; wait 2x65536 microseconds
+;	xor dx, dx
+;	call wait_abit
+;	pop dx
+;	jmp initial_animation_next
 
 ; ----------------------------------------------------------------------
 
-; wait cx:dx microseconds
-wait_abit:
-	pusha
-	xor dx, dx
-	mov ah, 0x86
-	int 0x15
-	popa
-	ret
-
-; ----------------------------------------------------------------------
-
-message:
-	db "Let's play tetris ...", 0
-
-seed_value:
-	dw 0x1234
+;message:     db "Let's play tetris ...", 0
+seed_value:  dw 0x1234
+delay:       dw 500
 
 bricks:
 	db 01000100b, 01000100b, 11110000b, 00000000b
 	db 01000100b, 01000100b, 11110000b, 00000000b
-
 	db 00100010b, 01100000b, 11100010b, 00000000b
 	db 01100100b, 01000000b, 10001110b, 00000000b
-
 	db 01000100b, 01100000b, 00101110b, 00000000b
 	db 01100010b, 00100000b, 11101000b, 00000000b
-
 	db 01100110b, 00000000b, 01100110b, 00000000b
 	db 01100110b, 00000000b, 01100110b, 00000000b
-
 	db 11000110b, 00000000b, 00100110b, 01000000b
 	db 11000110b, 00000000b, 00100110b, 01000000b
-
 	db 01001110b, 00000000b, 01001100b, 01000000b
 	db 11100100b, 00000000b, 10001100b, 10000000b
-
 	db 01101100b, 00000000b, 10001100b, 01000000b
 	db 01101100b, 00000000b, 10001100b, 01000000b
 
+; ----------------------------------------------------------------------
+; DEBUGGING
+; ----------------------------------------------------------------------
+
+; print_ax:
+; 	mov cx, 16
+; 	mov dx, ax
+; print_ax_loop:
+; 	push cx
+; 	test dx, 1000000000000000b
+; 	jz print_ax_zero
+; 	mov al, '1'
+; 	jmp print_ax_do
+; print_ax_zero:
+; 	mov al, '0'
+; print_ax_do:
+; 	mov bx, 0x0006
+; 	mov ah, 0x09               ; print brick
+; 	mov cx, 1
+; 	int 0x10
+; 	call cursor_right
+; 	pop cx
+; 	shl dx, 1
+; 	loop print_ax_loop
+; 	jmp $
