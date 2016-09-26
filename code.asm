@@ -1,21 +1,45 @@
+%macro print_reg 1
+	mov dx, %1
+	mov cx, 16
+print_reg_loop:
+	push cx
+	test dx, 1000000000000000b
+	jz print_reg_zero
+	mov al, '1'
+	jmp print_reg_do
+print_reg_zero:
+	mov al, '0'
+print_reg_do:
+	mov bx, 0x0006
+	mov ah, 0x09               ; print brick
+	mov cx, 1
+	int 0x10
+	call cursor_right
+	pop cx
+	shl dx, 1
+	loop print_reg_loop
+	jmp $
+%endmacro
+
 %macro sleep 0
-	pusha
 	mov ah, 0x86
 	int 0x15
-	popa
 %endmacro
 
 	section .text
 
-; TODO zufallszahlen
-; TODO lodsw untersuchen
+
 ; TODO print_brick optimieren ähnlich wie check_collision
 ; TODO volle zeilen löschen
+; TODO Nachricht game over
+; TODO intro
+; TODO beim rotieren check_collision aufrufen
 
 ; ----------------------------------------------------------------------
 	xor ax, ax                   ; init ds for lodsb
 	mov ds, ax
 
+start_tetris:
 	;call initial_animation
 	call init_screen
 
@@ -24,6 +48,8 @@ new_brick:
 	call select_brick            ; returns the selected brick in AL
 	mov dx, 0x0426               ; start at row 4 and col 38
 loop:
+	call check_collision
+	jne game_over
 	mov bx, 9                    ; show brick
 	call print_brick
 
@@ -35,7 +61,6 @@ wait_a:
 	xor cx, cx
 	mov dx, 100                  ; wait 100 microseconds
 	sleep
-	;call wait_abit
 	popa
 
 	push ax
@@ -63,19 +88,20 @@ down_arrow:
 left_arrow:
 	dec dl
 	call check_collision
-	cmp bl, 0
 	je clear_keys                 ; no collision
 	inc dl
 	jmp clear_keys
 right_arrow:
 	inc dl
 	call check_collision
-	cmp bl, 0
 	je clear_keys                ; no collision
 	dec dl
 	jmp clear_keys
 up_arrow:
-	; TODO
+	ror al, 3
+	inc al
+	and al, 11100011b
+	rol al, 3
 clear_keys:
 	mov bx, 9
 	call print_brick
@@ -89,7 +115,6 @@ no_key:
 	call clear_brick
 	inc dh                       ; increase row
 	call check_collision
-	cmp bl, 0
 	je no_collision
 	dec dh
 	mov bx, 9
@@ -99,17 +124,25 @@ no_collision:
 	jmp loop
 
 
-
+game_over:
+	xor bh, bh
+	xor dx, dx
+	mov ah, 2                    ; set cursor position
+	int 0x10
+	mov ax, 0x0947               ; print brick
+	mov cx, 80
+	int 0x10
+	xor ax, ax                   ; wait for keyboard
+	int 16h
+	jmp start_tetris
 
 ; DX = position (DH = row), AL = brick
-; return BL = 0 -> no collision
+; flag
 check_collision:
 	pusha
 	call brick_offset            ; result in SI
-	lodsb
-	mov ah, al
-	lodsb
-	;call print_ax
+	lodsw
+	xchg ah, al
 
 	xor bx, bx
 	mov cx, 4
@@ -119,28 +152,25 @@ cc:
 dd:
 	test ax, 1000000000000000b
 	jz is_zero
-
 	push ax
 	mov ah, 2                    ; set cursor position, BH = 0
 	int 0x10
 	mov ah, 8                    ; read character and attribute
 	int 0x10
 	shr ah, 4                    ; background color
-	cmp ah, 0                    ; check if color is black
-	je is_zero_x
+	jz is_zero_x
 	inc bl
-
 is_zero_x:
 	pop ax
 is_zero:
 	shl ax, 1
-	inc dl
+	inc dl                       ; move to next column
 	loop dd
-	sub dl, 4
-	inc dh
+	sub dl, 4                    ; reset column
+	inc dh                       ; move to next row
 	pop cx
 	loop cc
-
+	cmp bl, 0                    ; bl != 0 -> collision
 	popa
 	ret
 
@@ -150,7 +180,10 @@ select_brick:
 	mov ah, 2                    ; get time
 	int 0x1a
 	mov ax, word [seed_value + 0x7c00]
-	mul dx                       ; result in dx:ax
+	xor ax, dx
+	mov bx, 33797
+	mul bx
+	inc ax
 	mov word [seed_value + 0x7c00], ax
 	xor dx, dx
 	mov bx, 7
@@ -171,29 +204,38 @@ clear_screen:
 	ret
 
 ; ======================================================================
+; AL = number of brick
+;      00000000
+;           ^^^ = number of brick
+;         ^^ = rotation
 brick_offset:
 	xor ah, ah                   ; compute the offset of the brick
-	shl ax, 3                    ; ax = ax * 8
+	push ax
+	and al, 7
+	shl al, 3                    ; al *= 8
 	xchg si, ax                  ; mov si, ax
 	add si, bricks + 0x7c00
+	pop ax
+	shr al, 3                    ; add rotation to offset
+	shl al, 1
+	add si, ax
 	ret
 
 clear_brick:
 	xor bx, bx
-; AL = number of brick
+; AL = brick data
 ; DL = column
 ; DH = row
 ; BX = 9 -> show brick; 0 -> delete brick (BL = start color for brick)
-; on return AX and DX will not be modified
 print_brick:
 	pusha
 	cmp bx, 0
 	jz print_brick_no_color
+	push ax
+	and al, 7
 	add bl, al
-	mov bh, bl
 	shl bl, 4
-	or bl, bh
-	xor bh, bh
+	pop ax
 print_brick_no_color:
 	call brick_offset             ; result in si
 
@@ -226,7 +268,7 @@ brick_line_a:
 	pusha
 	and al, 128
 	jz brick_line_d
-	mov ax, 0x0958               ; print brick
+	mov ax, 0x0920               ; print brick
 	mov cx, 1
 	int 0x10
 brick_line_d:
@@ -251,37 +293,32 @@ cursor_right:
 
 ; ----------------------------------------------------------------------
 
+; this should be highly memory optimized
 init_screen:
 	call clear_screen
-	mov cx, 18                   ; 18 rows
-	mov dh, 3                    ; row 3
-init_screen_a:
+	mov dh, 3
+	mov cx, 18
+ia:
 	push cx
-	inc dh                       ; inc row
-	xor bx, bx
-	mov ah, 2                    ; set cursor position
-	mov dl, 33                   ; column
-	int 0x10
-	call init_screen_write_x
-	mov ah, 2                    ; set cursor position
-	mov dl, 46                   ; column
-	int 0x10
-	call init_screen_write_x
+	inc dh                       ; increment row
+	mov dl, 33                   ; set column
+	mov cx, 14                   ; width of box
+	mov bx, 0x77                 ; color
+	call write_data
+	cmp dh, 21                   ; don't remove last line
+	je ib                        ; if last line jump
+	inc dl                       ; increase column
+	mov cx, 12                   ; width of box
+	xor bx, bx                   ; color
+	call write_data
+ib:
 	pop cx
-	loop init_screen_a
-	mov ah, 2                    ; set cursor position
-	mov dl, 33
-	int 0x10
-	mov ax, 0x0958               ; write character
-	mov cx, 13
-	mov bl, 0x77                 ; gray on gray
-	int 0x10
+	loop ia
 	ret
-
-init_screen_write_x:
-	mov ax, 0x0958
-	mov cx, 1
-	mov bx, 0x77
+write_data:
+	mov ah, 2                    ; set cursor
+	int 0x10
+	mov ax, 0x0900               ; write boxes
 	int 0x10
 	ret
 
@@ -341,25 +378,3 @@ bricks:
 ; ----------------------------------------------------------------------
 ; DEBUGGING
 ; ----------------------------------------------------------------------
-
-; print_ax:
-; 	mov cx, 16
-; 	mov dx, ax
-; print_ax_loop:
-; 	push cx
-; 	test dx, 1000000000000000b
-; 	jz print_ax_zero
-; 	mov al, '1'
-; 	jmp print_ax_do
-; print_ax_zero:
-; 	mov al, '0'
-; print_ax_do:
-; 	mov bx, 0x0006
-; 	mov ah, 0x09               ; print brick
-; 	mov cx, 1
-; 	int 0x10
-; 	call cursor_right
-; 	pop cx
-; 	shl dx, 1
-; 	loop print_ax_loop
-; 	jmp $
