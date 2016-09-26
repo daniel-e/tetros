@@ -1,29 +1,33 @@
-%macro print_reg 1
-	mov dx, %1
-	mov cx, 16
-print_reg_loop:
-	push cx
-	test dx, 1000000000000000b
-	jz print_reg_zero
-	mov al, '1'
-	jmp print_reg_do
-print_reg_zero:
-	mov al, '0'
-print_reg_do:
-	mov bx, 0x0006
-	mov ah, 0x09               ; print brick
-	mov cx, 1
-	int 0x10
-	call cursor_right
-	pop cx
-	shl dx, 1
-	loop print_reg_loop
-	jmp $
-%endmacro
+; %macro print_reg 1
+; 	mov dx, %1
+; 	mov cx, 16
+; print_reg_loop:
+; 	push cx
+; 	test dx, 1000000000000000b
+; 	jz print_reg_zero
+; 	mov al, '1'
+; 	jmp print_reg_do
+; print_reg_zero:
+; 	mov al, '0'
+; print_reg_do:
+; 	mov bx, 0x0006
+; 	mov ah, 0x09               ; print brick
+; 	mov cx, 1
+; 	int 0x10
+; 	call cursor_right
+; 	pop cx
+; 	shl dx, 1
+; 	loop print_reg_loop
+; 	jmp $
+; %endmacro
 
-%macro sleep 0
+%macro sleep 1
+	pusha
+	xor cx, cx
+	mov dx, %1
 	mov ah, 0x86
 	int 0x15
+	popa
 %endmacro
 
 	section .text
@@ -33,7 +37,6 @@ print_reg_do:
 ; TODO volle zeilen löschen
 ; TODO Nachricht game over
 ; TODO intro
-; TODO beim rotieren check_collision aufrufen
 
 ; ----------------------------------------------------------------------
 	xor ax, ax                   ; init ds for lodsb
@@ -57,14 +60,10 @@ loop:
 wait_or_keyboard:
 	mov cx, word [delay + 0x7c00]
 wait_a:
-	pusha
-	xor cx, cx
-	mov dx, 100                  ; wait 100 microseconds
-	sleep
-	popa
+	sleep 100                    ; wait 100 microseconds
 
 	push ax
-	mov ah, 1                    ; check for keystroke
+	mov ah, 1                    ; check for keystroke; AX modified
 	int 0x16                     ; http://www.ctyme.com/intr/rb-1755.htm
 	mov bx, ax
 	pop ax
@@ -72,18 +71,15 @@ wait_a:
 	push bx
 	call clear_brick
 	pop bx
-
+                                 ; 4b left, 48 up, 4d right, 50 down
 	cmp bh, 0x4b                 ; left arrow
 	je left_arrow                ; http://stackoverflow.com/questions/16939449/how-to-detect-arrow-keys-in-assembly
 	cmp bh, 0x48                 ; up arrow
 	je up_arrow
 	cmp bh, 0x4d
 	je right_arrow
-	cmp bh, 0x50
-	je down_arrow
-	jmp clear_keys
-down_arrow:
-	mov word [delay + 0x7c00], 30
+
+	mov word [delay + 0x7c00], 30 ; every other key is fast down
 	jmp clear_keys
 left_arrow:
 	dec dl
@@ -98,10 +94,14 @@ right_arrow:
 	dec dl
 	jmp clear_keys
 up_arrow:
+	mov bl, al
 	ror al, 3
 	inc al
 	and al, 11100011b
 	rol al, 3
+	call check_collision
+	je clear_keys                ; no collision
+	mov al, bl
 clear_keys:
 	mov bx, 9
 	call print_brick
@@ -136,8 +136,22 @@ game_over:
 	int 16h
 	jmp start_tetris
 
-; DX = position (DH = row), AL = brick
-; flag
+
+; clear_brick:
+; 	xor bx, bx
+; print_brick:
+; 	or bx, bx
+; 	jz print_brick_no_color
+; 	push ax
+; 	and al, 7
+; 	add bl, al
+; 	shl bl, 4
+; 	pop ax
+; print_brick_no_color:
+; 	; BL = color of brick
+
+	; DX = position (DH = row), AL = brick
+	; return: flag
 check_collision:
 	pusha
 	call brick_offset            ; result in SI
@@ -155,10 +169,11 @@ dd:
 	push ax
 	mov ah, 2                    ; set cursor position, BH = 0
 	int 0x10
-	mov ah, 8                    ; read character and attribute
-	int 0x10
-	shr ah, 4                    ; background color
-	jz is_zero_x
+
+	mov ah, 8                    ; read character and attribute, BH = 0
+	int 0x10                     ; result in AX
+	shr ah, 4                    ; rotate to get background color in AH
+	jz is_zero_x                 ; jmp if background color is 0
 	inc bl
 is_zero_x:
 	pop ax
@@ -189,6 +204,7 @@ select_brick:
 	mov bx, 7
 	div bx
 	xchg ax, dx
+	;mov byte [current_brick + 0x7c00], al
 	ret
 
 ; TODO below mem optimized
@@ -229,7 +245,7 @@ clear_brick:
 ; BX = 9 -> show brick; 0 -> delete brick (BL = start color for brick)
 print_brick:
 	pusha
-	cmp bx, 0
+	or bx, bx
 	jz print_brick_no_color
 	push ax
 	and al, 7
@@ -356,8 +372,9 @@ initial_animation_do:
 ; ----------------------------------------------------------------------
 
 ;message:     db "Let's play tetris ...", 0
-seed_value:  dw 0x1234
-delay:       dw 500
+seed_value:    dw 0x1234
+delay:         dw 500
+;current_brick: db 0
 
 bricks:
 	db 01000100b, 01000100b, 11110000b, 00000000b
