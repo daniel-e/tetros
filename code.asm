@@ -49,12 +49,12 @@ print_reg_do:
 %macro select_brick 0
 	mov ah, 2                    ; get current time
 	int 0x1a
-	mov ax, word [seed_value + 0x7c00]
+	mov al, byte [seed_value + 0x7c00]
 	xor ax, dx
-	mov bx, 33797
+	mov bl, 31
 	mul bx
 	inc ax
-	mov word [seed_value + 0x7c00], ax
+	mov byte [seed_value + 0x7c00], al
 	xor dx, dx
 	mov bx, 7
 	div bx
@@ -74,43 +74,26 @@ print_reg_do:
 	clear_screen
 	mov dh, 3
 	mov cx, 18
-ia:
-	push cx
-	inc dh                       ; increment row
-	mov dl, 33                   ; set column
-	mov cx, 14                   ; width of box
-	mov bx, 0x77                 ; color
+ia: push cx
+	inc dh                           ; increment row
+	mov dl, 33                       ; set column
+	mov cx, 14                       ; width of box
+	mov bx, 0x77                     ; color
 	call set_and_write
-	cmp dh, 21                   ; don't remove last line
-	je ib                        ; if last line jump
-	inc dx                       ; increase column
-	mov cx, 12                   ; width of box
-	xor bx, bx                   ; color
+	cmp dh, 21                       ; don't remove last line
+	je ib                            ; if last line jump
+	inc dx                           ; increase column
+	mov cx, 12                       ; width of box
+	xor bx, bx                       ; color
 	call set_and_write
-ib:
-	pop cx
+ib: pop cx
 	loop ia
 %endmacro
 
-; AL = number of brick
-;      00000000
-;           ^^^ = number of brick
-;         ^^ = rotation
 %macro brick_offset 0
-	xor ah, ah                   ; XXXXXXXXXXXXXXXXXXXXXXXXXXXXxx
+	xor ah, ah                       ; AL = brick offset
 	mov si, ax
 	add si, bricks + 0x7c00
-
-	;xor ah, ah                   ; compute the offset of the brick
-	;push ax
-	;and al, 7
-	;shl al, 3                    ; al *= 8
-	;xchg si, ax                  ; mov si, ax
-	;add si, bricks + 0x7c00
-	;pop ax
-	;shr al, 3                    ; add rotation to offset
-	;shl al, 1
-	;add si, ax
 %endmacro
 
 ; ==============================================================================
@@ -170,12 +153,12 @@ right_arrow:
 	jmp clear_keys
 up_arrow:
 	mov bl, al
-	add al, 2
-	and al, 00000111b
-	mov cl, bl
-	and cl, 00111000b
-	or al, cl
-	call check_collision
+	inc ax
+	inc ax
+	test al, 00000111b           ; check for overflow
+	jnz nf                       ; no overflow
+	sub al, 8
+nf: call check_collision
 	je clear_keys                ; no collision
 	mov al, bl
 clear_keys:
@@ -221,48 +204,43 @@ set_and_read:
  	mov dl, 34                   ; replace current row with row above
  	mov cx, 12
 cf_aa:
- 	push cx
- 	dec dh
- 	call set_and_read
- 	inc dh
- 	mov bl, ah                   ; color from AH to BL
- 	mov cx, 1
- 	call set_and_write
- 	inc dx
- 	pop cx
- 	loop cf_aa
+	push cx
+	dec dh                          ; decrement row
+	call set_and_read
+	inc dh                          ; increment row
+	mov bl, ah                      ; color from AH to BL
+	mov cl, 1
+	call set_and_write
+	inc dx                          ; next column
+	pop cx
+	loop cf_aa
 	popa
 %endmacro
 
 check_filled:
 	pusha
-	mov dh, 21                   ; row
+	mov dh, 21                       ; start at row 21
 next_row:
-	dec dh
-	jz cf_done
+	dec dh                           ; decrement row
+	jz cf_done                       ; at row 0 we are done
 	xor bx, bx
-	mov cx, 12
-	mov dl, 34                   ; column
+	mov cx, 12                       ; 12 columns
+	mov dl, 34                       ; start at column 34
 cf_loop:
 	call set_and_read
-	shr ah, 4                    ; rotate to get background color in AH
-
-	jz cf_is_zero                ; jmp if background color is 0
-	inc bx
-	inc dx
+	shr ah, 4                        ; rotate to get background color in AH
+	jz cf_is_zero                    ; jmp if background color is 0
+	inc bx                           ; increment counter
+	inc dx                           ; go to next column
 cf_is_zero:
 	loop cf_loop
-	cmp bl, 12
+	cmp bl, 12                       ; if counter is 12 full we found a full row
 	jne next_row
-
-replace_next_row:
+replace_next_row:                    ; replace current row with rows above
 	replace_current_row
-	dec dh
+	dec dh                           ; replace row above ... and so on
 	jnz replace_next_row
-
-	popa
-	call check_filled
-	ret
+	call check_filled                ; check for other full rows
 cf_done:
 	popa
 	ret
@@ -284,11 +262,11 @@ clear_brick:
 	jmp print_brick_no_color
 print_brick:
 	mov bl, al                   ; select the right color
-	shr bl, 3
-	add bl, 9
-	shl bl, 4
+	shl bl, 1
+	and bl, 11110000b            ; ((bl >> 3) + 9) << 4
+	add bl, 144
 print_brick_no_color:
-	inc bx
+	inc bx                       ; set least significant bit
 	mov di, bx
 	jmp check_collision_main
 	; BL = color of brick
@@ -301,7 +279,6 @@ check_collision_main:            ; DI = 1 -> check, 0 -> print
 	brick_offset                 ; result in SI
 	lodsw
 	xchg ah, al
-
 	xor bx, bx                   ; set BH = BL = 0
 	mov cx, 4
 cc:
@@ -383,7 +360,7 @@ initial_animation_do:
 
 ;message:     db "Let's play tetris ...", 0
 game_over_msg: db "GAME OVER!"
-seed_value:    dw 0x1234
+seed_value:    db 0x34
 delay:         dw 500
 
 bricks:
@@ -401,3 +378,7 @@ bricks:
 	db 11100100b, 00000000b, 10001100b, 10000000b
 	db 01101100b, 00000000b, 10001100b, 01000000b
 	db 01101100b, 00000000b, 10001100b, 01000000b
+
+;times 510-($-$$) db 0
+;db 0x55
+;db 0xaa
