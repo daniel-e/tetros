@@ -1,7 +1,8 @@
-; TODO Nachricht game over
+; TODO reduce size
+; TODO decrease timer / increase level
 ; TODO intro
 ; TODO show next brick
-
+; TODO scores
 
 ; ==============================================================================
 ; DEBUGGING MACROS
@@ -46,7 +47,7 @@ print_reg_do:
 %endmacro
 
 %macro select_brick 0
-	mov ah, 2                    ; get time
+	mov ah, 2                    ; get current time
 	int 0x1a
 	mov ax, word [seed_value + 0x7c00]
 	xor ax, dx
@@ -57,11 +58,20 @@ print_reg_do:
 	xor dx, dx
 	mov bx, 7
 	div bx
-	xchg ax, dx                  ; move result in AL
+	shl dl, 3
+	mov al, dl
+%endmacro
+
+%macro clear_screen 0
+	mov ax, 3                    ; clear screen
+	int 0x10
+	mov ah, 1                    ; hide cursor
+	mov cx, 0x2607
+	int 0x10
 %endmacro
 
 %macro init_screen 0
-	call clear_screen
+	clear_screen
 	mov dh, 3
 	mov cx, 18
 ia:
@@ -70,16 +80,37 @@ ia:
 	mov dl, 33                   ; set column
 	mov cx, 14                   ; width of box
 	mov bx, 0x77                 ; color
-	call write_data
+	call set_and_write
 	cmp dh, 21                   ; don't remove last line
 	je ib                        ; if last line jump
 	inc dx                       ; increase column
 	mov cx, 12                   ; width of box
 	xor bx, bx                   ; color
-	call write_data
+	call set_and_write
 ib:
 	pop cx
 	loop ia
+%endmacro
+
+; AL = number of brick
+;      00000000
+;           ^^^ = number of brick
+;         ^^ = rotation
+%macro brick_offset 0
+	xor ah, ah                   ; XXXXXXXXXXXXXXXXXXXXXXXXXXXXxx
+	mov si, ax
+	add si, bricks + 0x7c00
+
+	;xor ah, ah                   ; compute the offset of the brick
+	;push ax
+	;and al, 7
+	;shl al, 3                    ; al *= 8
+	;xchg si, ax                  ; mov si, ax
+	;add si, bricks + 0x7c00
+	;pop ax
+	;shr al, 3                    ; add rotation to offset
+	;shl al, 1
+	;add si, ax
 %endmacro
 
 ; ==============================================================================
@@ -87,14 +118,15 @@ ib:
 section .text
 	xor ax, ax                   ; init ds for lodsb
 	mov ds, ax
+	mov es, ax
 
 start_tetris:
 	;call initial_animation
 	init_screen
 new_brick:
-	mov word [delay + 0x7c00], 500
-	select_brick                 ; returns the selected brick in AL
-	mov dx, 0x0426               ; start at row 4 and col 38
+	mov word [delay + 0x7c00], 500   ; reset timer
+	select_brick                     ; returns the selected brick in AL
+	mov dx, 0x0426                   ; start at row 4 and col 38
 loop:
 	call check_collision
 	jne game_over
@@ -138,10 +170,11 @@ right_arrow:
 	jmp clear_keys
 up_arrow:
 	mov bl, al
-	ror al, 3
-	inc ax                       ; inc al, but inc ax needs less memory
-	and al, 11100011b
-	rol al, 3
+	add al, 2
+	and al, 00000111b
+	mov cl, bl
+	and cl, 00111000b
+	or al, cl
 	call check_collision
 	je clear_keys                ; no collision
 	mov al, bl
@@ -158,18 +191,15 @@ no_key:
 	call clear_brick
 	inc dh                       ; increase row
 	call check_collision
-	je no_collision
+	je loop                      ; no collision
 	dec dh
 	call print_brick
 	call check_filled
 	jmp new_brick
-no_collision:
-	jmp loop
 
+; ------------------------------------------------------------------------------
 
-
-
-write_data:
+set_and_write:
 	mov ah, 2                    ; set cursor
 	int 0x10
 	mov ax, 0x0900               ; write boxes
@@ -182,6 +212,27 @@ set_and_read:
 	mov ah, 8                    ; read character and attribute, BH = 0
 	int 0x10                     ; result in AX
 	ret
+
+; ------------------------------------------------------------------------------
+
+; DH = current row
+%macro replace_current_row 0
+	pusha
+ 	mov dl, 34                   ; replace current row with row above
+ 	mov cx, 12
+cf_aa:
+ 	push cx
+ 	dec dh
+ 	call set_and_read
+ 	inc dh
+ 	mov bl, ah                   ; color from AH to BL
+ 	mov cx, 1
+ 	call set_and_write
+ 	inc dx
+ 	pop cx
+ 	loop cf_aa
+	popa
+%endmacro
 
 check_filled:
 	pusha
@@ -205,7 +256,7 @@ cf_is_zero:
 	jne next_row
 
 replace_next_row:
-	call replace_current_row
+	replace_current_row
 	dec dh
 	jnz replace_next_row
 
@@ -217,69 +268,37 @@ cf_done:
 	ret
 
 
-replace_current_row:             ; DH = current row
-	pusha
-	mov dl, 34                   ; replace current row with row above
-	mov cx, 12
-cf_aa:
-	push cx
-
-	dec dh
-	call set_and_read
-	inc dh
-	mov bl, ah                   ; color from AH to BL
-	mov ah, 2                    ; set cursor position
-	int 0x10
-	mov ax, 0x920                ; write character
-	mov cx, 1
-	int 0x10
-	inc dx
-
-	pop cx
-	loop cf_aa
-
-	popa
-	ret
-
-
 game_over:
-	jmp $
-	; xor bh, bh
-	; xor dx, dx
-	; mov ah, 2                    ; set cursor position
-	; int 0x10
-	; mov ax, 0x0947               ; print brick
-	; mov cx, 80
-	; int 0x10
-	; xor ax, ax                   ; wait for keyboard
-	; int 16h
-	; jmp start_tetris
-
+	mov cx, 10
+	mov dx, 0x0323
+	mov bx, 0x8c
+	mov bp, game_over_msg + 0x7c00
+	mov ax, 0x1300
+	int 0x10
+	xor ax, ax                   ; wait for keyboard
+	int 16h
+	jmp start_tetris
 
 clear_brick:
- 	xor bx, bx
+	xor bx, bx
 	jmp print_brick_no_color
 print_brick:
-	mov bx, 9
- 	push ax
- 	and al, 7
- 	add bl, al
- 	shl bl, 4
- 	pop ax
+	mov bl, al                   ; select the right color
+	shr bl, 3
+	add bl, 9
+	shl bl, 4
 print_brick_no_color:
 	inc bx
 	mov di, bx
-
 	jmp check_collision_main
- 	; BL = color of brick
-
+	; BL = color of brick
 	; DX = position (DH = row), AL = brick
 	; return: flag
 check_collision:
 	mov di, 0
-check_collision_main:    ; DI = 1 -> check, 0 -> print
+check_collision_main:            ; DI = 1 -> check, 0 -> print
 	pusha
-	call brick_offset            ; result in SI
+	brick_offset                 ; result in SI
 	lodsw
 	xchg ah, al
 
@@ -296,7 +315,7 @@ dd:
 	int 0x10
 
 	or di, di
-	jz ee                        ; jump if we want to check for collisions
+	jz ee                        ; jump if we just want to check for collisions
 
 	; print space with color stored in DI at postion DX
 	pusha
@@ -328,32 +347,6 @@ is_zero:
 	ret
 
 ; ======================================================================
-
-clear_screen:
-	mov ax, 3                    ; clear screen
-	int 0x10
-	mov ah, 1                    ; hide cursor
-	mov cx, 0x2607
-	int 0x10
-	ret
-
-; ======================================================================
-; AL = number of brick
-;      00000000
-;           ^^^ = number of brick
-;         ^^ = rotation
-brick_offset:
-	xor ah, ah                   ; compute the offset of the brick
-	push ax
-	and al, 7
-	shl al, 3                    ; al *= 8
-	xchg si, ax                  ; mov si, ax
-	add si, bricks + 0x7c00
-	pop ax
-	shr al, 3                    ; add rotation to offset
-	shl al, 1
-	add si, ax
-	ret
 
 ; ----------------------------------------------------------------------
 
@@ -389,9 +382,9 @@ initial_animation_do:
 ; ----------------------------------------------------------------------
 
 ;message:     db "Let's play tetris ...", 0
+game_over_msg: db "GAME OVER!"
 seed_value:    dw 0x1234
 delay:         dw 500
-;current_brick: db 0
 
 bricks:
 	db 01000100b, 01000100b, 11110000b, 00000000b
@@ -408,7 +401,3 @@ bricks:
 	db 11100100b, 00000000b, 10001100b, 10000000b
 	db 01101100b, 00000000b, 10001100b, 01000000b
 	db 01101100b, 00000000b, 10001100b, 01000000b
-
-; ----------------------------------------------------------------------
-; DEBUGGING
-; ----------------------------------------------------------------------
