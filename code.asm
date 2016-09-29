@@ -1,4 +1,3 @@
-; TODO reduce size
 ; TODO decrease timer / increase level
 ; TODO intro
 ; TODO show next brick
@@ -6,36 +5,19 @@
 
 ; TODO hide cursors
 ; game over message
-; replace next row
+
+; TODO position in memory
+; TODO current brick in memory
+
+	org 7c00h
 
 ; ==============================================================================
 ; DEBUGGING MACROS
 ; ==============================================================================
 
-%macro print_reg 1
-	mov dx, %1
-	mov cx, 16
-print_reg_loop:
-	push cx
-	mov al, '0'
-	test dh, 10000000b
-	jz print_reg_do
-	mov al, '1'
-print_reg_do:
-	mov bx, 0x0006             ; page = 0 (BH), color = gray on black (BL)
-	mov ah, 0x09               ; write character stored in AL
-	mov cx, 1
-	int 0x10
-	mov ah, 3                  ; move cursor one column forward
-	int 0x10
-	inc dx
-	mov ah, 2                  ; set cursor
-	int 0x10
-	pop cx
-	shl dx, 1
-	loop print_reg_loop
-	jmp $
-%endmacro
+%ifdef DEBUG
+%include "debug_macros.mac"
+%endif
 
 ; ==============================================================================
 ; MACROS
@@ -53,14 +35,12 @@ print_reg_do:
 %macro select_brick 0
 	mov ah, 2                    ; get current time
 	int 0x1a
-	mov al, byte [0x7f02]
-	;mov al, byte [seed_value + 0x7c00]
+	mov al, byte [seed_value]
 	xor ax, dx
 	mov bl, 31
 	mul bx
 	inc ax
-	;mov byte [seed_value + 0x7c00], al
-	mov byte [0x7f02], al
+	mov byte [seed_value], al
 	xor dx, dx
 	mov bx, 7
 	div bx
@@ -96,48 +76,33 @@ ib: pop cx
 	loop ia
 %endmacro
 
-%macro brick_offset 0
-	xor ah, ah                       ; AL = brick offset
-	;mov bx, [bricks + 0x7c00]  ; XXXXXXXXXXXXXXXx
-	;add bx, ax
-	;mov ax, word [bx]
-	mov si, ax
-	add si, bricks + 0x7c00
-	lodsw
-	xchg ah, al
-%endmacro
-
 ; ==============================================================================
 
-; delay = 0x7f00
-; seed = 0x7f02
+delay:      equ 0x7f00
+seed_value: equ 0x7f02
+cnt:        equ 0x7f04
 
 section .text
-	xor ax, ax                   ; init ds for lodsb
-	mov ds, ax
-	;mov es, ax
 
 start_tetris:
-	;call initial_animation
+	xor ax, ax
+	mov ds, ax
 	init_screen
 new_brick:
-	mov word [0x7f00], 255
-	;mov word [delay + 0x7c00], 500   ; reset timer
+	mov byte [delay], 100            ; 3 * 100 = 300ms
 	select_brick                     ; returns the selected brick in AL
 	mov dx, 0x0426                   ; start at row 4 and col 38
 loop:
 	call check_collision
-	je ngo
-	hlt
-ngo:call print_brick
+	jne $                            ; collision -> game over
+	call print_brick
 
-; if you modify AL or DX here, you should know what you're doing
 wait_or_keyboard:
-	;mov cx, word [delay + 0x7c00]
-	mov cx, word [0x7f00]
+	xor cx, cx
+	mov cl, byte [delay]
 wait_a:
 	push cx
-	sleep 1400                    ; wait 100 microseconds
+	sleep 3000                       ; wait 3ms
 
 	push ax
 	mov ah, 1                    ; check for keystroke; AX modified
@@ -154,8 +119,7 @@ wait_a:
 	cmp ch, 0x4d
 	je right_arrow
 
-	;mov word [delay + 0x7c00], 30 ; every other key is fast down
-	mov word [0x7f00], 30
+	mov byte [delay], 10         ; every other key is fast down
 	jmp clear_keys
 left_arrow:
 	dec dx
@@ -186,8 +150,6 @@ clear_keys:
 	int 0x16
 	pop ax
 no_key:
-	;dec word [0x7f00]
-	;jnz wait_a
 	pop cx
 	loop wait_a
 
@@ -205,7 +167,7 @@ no_key:
 set_and_write:
 	mov ah, 2                    ; set cursor
 	int 0x10
-	mov ax, 0x0900               ; write boxes
+	mov ax, 0x0920               ; write boxes
 	int 0x10
 	ret
 
@@ -220,8 +182,8 @@ set_and_read:
 
 ; DH = current row
 %macro replace_current_row 0
-	pusha
- 	mov dl, 34                   ; replace current row with row above
+	pusha                           ; replace current row with row above
+ 	mov dl, 34
  	mov cx, 12
 cf_aa:
 	push cx
@@ -265,38 +227,41 @@ cf_done:
 	popa
 	ret
 
+;color
+;10010000b
 
-; game_over:
-; 	mov cx, 10
-; 	mov dx, 0x0323
-; 	mov bx, 0x8c
-; 	mov bp, game_over_msg + 0x7c00
-; 	mov ax, 0x1300
-; 	int 0x10
-; 	xor ax, ax                   ; wait for keyboard
-; 	int 16h
-; 	jmp start_tetris
+;00001000
+;00010000
+;00011000
+;00100000
+;00101000
+;00110000
+;00111000
+
 
 clear_brick:
 	xor bx, bx
 	jmp print_brick_no_color
-print_brick:
+print_brick:  ; al = 0AAAABBB
 	mov bl, al                   ; select the right color
-	shl bl, 1
-	and bl, 11110000b            ; ((bl >> 3) + 9) << 4
+	shl bl, 1                    ; ((bl >> 3) + 9) << 4
+	and bl, 11110000b
 	add bl, 144
 print_brick_no_color:
 	inc bx                       ; set least significant bit
 	mov di, bx
 	jmp check_collision_main
 	; BL = color of brick
-	; DX = position (DH = row), AL = brick
+	; DX = position (DH = row), AL = brick offset
 	; return: flag
 check_collision:
 	mov di, 0
 check_collision_main:            ; DI = 1 -> check, 0 -> print
 	pusha
-	brick_offset                 ; brick in AL
+	xor bx, bx                   ; load the brick into AX
+	mov bl, al
+	mov ax, word [bricks + bx]
+
 	xor bx, bx                   ; set BH = BL = 0
 	mov cx, 4
 cc:
@@ -313,7 +278,6 @@ dd:
 	; print space with color stored in DI at postion DX
 	pusha
 	mov bx, di
-	dec bx
 	xor al, al
 	mov cx, 1
 	call set_and_write
@@ -327,7 +291,7 @@ ee:
 is_zero_a:
 	pop ax
 is_zero:
-	shl ax, 1
+	shl ax, 1                    ; move to next bit in brick mask
 	inc dx                       ; move to next column
 	loop dd
 	sub dl, 4                    ; reset column
@@ -338,70 +302,43 @@ is_zero:
 	popa
 	ret
 
-; ======================================================================
+; ==============================================================================
 
-; ----------------------------------------------------------------------
-
-initial_animation:
-;	call clear_screen
-;	mov ah, 2                    ; set cursor position
-;	xor bx, bx
-;	mov dh, 5
-;	mov dl, 10
-;	int 0x10
-;	mov si, message + 0x7c00     ; MBR is loaded at address 0000:7C00
-initial_animation_next:
-;	cld
-;	lodsb
-;	cmp al, 0
-;	jne initial_animation_do
-;	xor ax, ax                   ; wait for keyboard
-;	int 16h
-;	ret
-initial_animation_do:
-;	mov bx, 0x0a                 ; write character
-;	mov cx, 1
-;	mov ah, 9
-;	int 0x10
-;	call cursor_right
-;	push dx
-;	mov cx, 2                    ; wait 2x65536 microseconds
-;	xor dx, dx
-;	call wait_abit
-;	pop dx
-;	jmp initial_animation_next
-
-; ----------------------------------------------------------------------
-
-;message:     db "Let's play tetris ...", 0
-;game_over_msg: db "GAME OVER!"
-;seed_value:    db 0x34
-;delay:         dw 500
+; ABCD    DHLP
+; EFGH    CGKO
+; IJKL    BFJN
+; MNOP    AEIM
 
 bricks:
-	db 01000100b, 01000100b, 11110000b, 00000000b
-	db 01000100b, 01000100b, 11110000b, 00000000b
-	db 00100010b, 01100000b, 11100010b, 00000000b
-	db 01100100b, 01000000b, 10001110b, 00000000b
-	db 01000100b, 01100000b, 00101110b, 00000000b
-	db 01100010b, 00100000b, 11101000b, 00000000b
-	db 01100110b, 00000000b, 01100110b, 00000000b
-	db 01100110b, 00000000b, 01100110b, 00000000b
-	db 11000110b, 00000000b, 00100110b, 01000000b
-	db 11000110b, 00000000b, 00100110b, 01000000b
-	db 01001110b, 00000000b, 01001100b, 01000000b
-	db 11100100b, 00000000b, 10001100b, 10000000b
-	db 01101100b, 00000000b, 10001100b, 01000000b
-	db 01101100b, 00000000b, 10001100b, 01000000b
+	;  in AL      in AH
+	;  3rd + 4th  1st + 2nd row
+	db 01000100b, 01000100b, 00000000b, 11110000b
+	db 01000100b, 01000100b, 00000000b, 11110000b
+	db 01100000b, 00100010b, 00000000b, 11100010b
+	db 01000000b, 01100100b, 00000000b, 10001110b
+	db 01100000b, 01000100b, 00000000b, 00101110b
+	db 00100000b, 01100010b, 00000000b, 11101000b
+	db 00000000b, 01100110b, 00000000b, 01100110b
+	db 00000000b, 01100110b, 00000000b, 01100110b
+	db 00000000b, 11000110b, 01000000b, 00100110b
+	db 00000000b, 11000110b, 01000000b, 00100110b
+	db 00000000b, 01001110b, 01000000b, 01001100b
+	db 00000000b, 11100100b, 10000000b, 10001100b
+	db 00000000b, 01101100b, 01000000b, 10001100b
+	db 00000000b, 01101100b, 01000000b, 10001100b
 
-; times 446-($-$$) db 0
-;     db 0x80                   ; bootable
-;     db 0x00, 0x01, 0x00       ; start CHS address
-;     db 0x17                   ; partition type
-;     db 0x00, 0x02, 0x00       ; end CHS address
-;     db 0x00, 0x00, 0x00, 0x00 ; LBA
-;     db 0x02, 0x00, 0x00, 0x00 ; number of sectors
+%ifndef DEBUG
+; It seems that I need a dummy partition table entry for my notebook.
+times 446-($-$$) db 0
+	db 0x80                   ; bootable
+    db 0x00, 0x01, 0x00       ; start CHS address
+    db 0x17                   ; partition type
+    db 0x00, 0x02, 0x00       ; end CHS address
+    db 0x00, 0x00, 0x00, 0x00 ; LBA
+    db 0x02, 0x00, 0x00, 0x00 ; number of sectors
 
-; times 510-($-$$) db 0
-; 	db 0x55
-; 	db 0xaa
+; At the end we need the boot sector signature.
+times 510-($-$$) db 0
+	db 0x55
+	db 0xaa
+%endif
