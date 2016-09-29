@@ -4,6 +4,10 @@
 ; TODO show next brick
 ; TODO scores
 
+; TODO hide cursors
+; game over message
+; replace next row
+
 ; ==============================================================================
 ; DEBUGGING MACROS
 ; ==============================================================================
@@ -49,12 +53,14 @@ print_reg_do:
 %macro select_brick 0
 	mov ah, 2                    ; get current time
 	int 0x1a
-	mov al, byte [seed_value + 0x7c00]
+	mov al, byte [0x7f02]
+	;mov al, byte [seed_value + 0x7c00]
 	xor ax, dx
 	mov bl, 31
 	mul bx
 	inc ax
-	mov byte [seed_value + 0x7c00], al
+	;mov byte [seed_value + 0x7c00], al
+	mov byte [0x7f02], al
 	xor dx, dx
 	mov bx, 7
 	div bx
@@ -65,9 +71,9 @@ print_reg_do:
 %macro clear_screen 0
 	mov ax, 3                    ; clear screen
 	int 0x10
-	mov ah, 1                    ; hide cursor
-	mov cx, 0x2607
-	int 0x10
+;	mov ah, 1                    ; hide cursor
+;	mov cx, 0x2607
+;	int 0x10
 %endmacro
 
 %macro init_screen 0
@@ -92,35 +98,46 @@ ib: pop cx
 
 %macro brick_offset 0
 	xor ah, ah                       ; AL = brick offset
+	;mov bx, [bricks + 0x7c00]  ; XXXXXXXXXXXXXXXx
+	;add bx, ax
+	;mov ax, word [bx]
 	mov si, ax
 	add si, bricks + 0x7c00
+	lodsw
+	xchg ah, al
 %endmacro
 
 ; ==============================================================================
 
+; delay = 0x7f00
+; seed = 0x7f02
+
 section .text
 	xor ax, ax                   ; init ds for lodsb
 	mov ds, ax
-	mov es, ax
+	;mov es, ax
 
 start_tetris:
 	;call initial_animation
 	init_screen
 new_brick:
-	mov word [delay + 0x7c00], 500   ; reset timer
+	mov word [0x7f00], 255
+	;mov word [delay + 0x7c00], 500   ; reset timer
 	select_brick                     ; returns the selected brick in AL
 	mov dx, 0x0426                   ; start at row 4 and col 38
 loop:
 	call check_collision
-	jne game_over
-	call print_brick
+	je ngo
+	hlt
+ngo:call print_brick
 
 ; if you modify AL or DX here, you should know what you're doing
 wait_or_keyboard:
-	mov cx, word [delay + 0x7c00]
+	;mov cx, word [delay + 0x7c00]
+	mov cx, word [0x7f00]
 wait_a:
 	push cx
-	sleep 100                    ; wait 100 microseconds
+	sleep 1400                    ; wait 100 microseconds
 
 	push ax
 	mov ah, 1                    ; check for keystroke; AX modified
@@ -137,7 +154,8 @@ wait_a:
 	cmp ch, 0x4d
 	je right_arrow
 
-	mov word [delay + 0x7c00], 30 ; every other key is fast down
+	;mov word [delay + 0x7c00], 30 ; every other key is fast down
+	mov word [0x7f00], 30
 	jmp clear_keys
 left_arrow:
 	dec dx
@@ -168,6 +186,8 @@ clear_keys:
 	int 0x16
 	pop ax
 no_key:
+	;dec word [0x7f00]
+	;jnz wait_a
 	pop cx
 	loop wait_a
 
@@ -246,16 +266,16 @@ cf_done:
 	ret
 
 
-game_over:
-	mov cx, 10
-	mov dx, 0x0323
-	mov bx, 0x8c
-	mov bp, game_over_msg + 0x7c00
-	mov ax, 0x1300
-	int 0x10
-	xor ax, ax                   ; wait for keyboard
-	int 16h
-	jmp start_tetris
+; game_over:
+; 	mov cx, 10
+; 	mov dx, 0x0323
+; 	mov bx, 0x8c
+; 	mov bp, game_over_msg + 0x7c00
+; 	mov ax, 0x1300
+; 	int 0x10
+; 	xor ax, ax                   ; wait for keyboard
+; 	int 16h
+; 	jmp start_tetris
 
 clear_brick:
 	xor bx, bx
@@ -276,20 +296,16 @@ check_collision:
 	mov di, 0
 check_collision_main:            ; DI = 1 -> check, 0 -> print
 	pusha
-	brick_offset                 ; result in SI
-	lodsw
-	xchg ah, al
+	brick_offset                 ; brick in AL
 	xor bx, bx                   ; set BH = BL = 0
 	mov cx, 4
 cc:
 	push cx
 	mov cl, 4
 dd:
-	test ax, 1000000000000000b
+	test ah, 10000000b
 	jz is_zero
 	push ax
-	mov ah, 2                    ; set cursor position, BH = 0
-	int 0x10
 
 	or di, di
 	jz ee                        ; jump if we just want to check for collisions
@@ -298,14 +314,13 @@ dd:
 	pusha
 	mov bx, di
 	dec bx
-	mov ax, 0x0920               ; print brick
+	xor al, al
 	mov cx, 1
-	int 0x10
+	call set_and_write
 	popa
 	jmp is_zero_a
 ee:
-	mov ah, 8                    ; read character and attribute, BH = 0
-	int 0x10                     ; result in AX
+	call set_and_read
 	shr ah, 4                    ; rotate to get background color in AH
 	jz is_zero_a                 ; jmp if background color is 0
 	inc bx
@@ -319,7 +334,7 @@ is_zero:
 	inc dh                       ; move to next row
 	pop cx
 	loop cc
-	cmp bl, 0                    ; bl != 0 -> collision
+	or bl, bl                    ; bl != 0 -> collision
 	popa
 	ret
 
@@ -359,9 +374,9 @@ initial_animation_do:
 ; ----------------------------------------------------------------------
 
 ;message:     db "Let's play tetris ...", 0
-game_over_msg: db "GAME OVER!"
-seed_value:    db 0x34
-delay:         dw 500
+;game_over_msg: db "GAME OVER!"
+;seed_value:    db 0x34
+;delay:         dw 500
 
 bricks:
 	db 01000100b, 01000100b, 11110000b, 00000000b
@@ -379,6 +394,14 @@ bricks:
 	db 01101100b, 00000000b, 10001100b, 01000000b
 	db 01101100b, 00000000b, 10001100b, 01000000b
 
-;times 510-($-$$) db 0
-;db 0x55
-;db 0xaa
+; times 446-($-$$) db 0
+;     db 0x80                   ; bootable
+;     db 0x00, 0x01, 0x00       ; start CHS address
+;     db 0x17                   ; partition type
+;     db 0x00, 0x02, 0x00       ; end CHS address
+;     db 0x00, 0x00, 0x00, 0x00 ; LBA
+;     db 0x02, 0x00, 0x00, 0x00 ; number of sectors
+
+; times 510-($-$$) db 0
+; 	db 0x55
+; 	db 0xaa
