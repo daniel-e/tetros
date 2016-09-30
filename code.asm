@@ -1,15 +1,4 @@
-; TODO decrease timer / increase level
-; TODO intro
-; TODO show next brick
-; TODO scores
-
-; TODO hide cursors
-; game over message
-
-; TODO position in memory
-; TODO current brick in memory
-; TODO highscore (persist on disc)
-
+; Tetris
 	org 7c00h
 
 ; ==============================================================================
@@ -24,6 +13,7 @@
 ; MACROS
 ; ==============================================================================
 
+; Sleeps for the given number of microseconds.
 %macro sleep 1
 	pusha
 	xor cx, cx
@@ -33,6 +23,7 @@
 	popa
 %endmacro
 
+; Choose a brick at random.
 %macro select_brick 0
 	mov ah, 2                    ; get current time
 	int 0x1a
@@ -46,31 +37,38 @@
 	mov bx, 7
 	div bx
 	shl dl, 3
-	mov al, dl
+	xchg ax, dx                  ; mov al, dl
 %endmacro
 
+; Sets video mode and hides cursor.
 %macro clear_screen 0
-	mov ax, 3                    ; clear screen
+	xor ax, ax                   ; clear screen (40x25)
 	int 0x10
-;	mov ah, 1                    ; hide cursor
-;	mov cx, 0x2607
-;	int 0x10
+	mov ah, 1                    ; hide cursor
+	mov cx, 0x2607
+	int 0x10
 %endmacro
+
+field_left_col:  equ 13
+field_width:     equ 14
+inner_width:     equ 12
+inner_first_col: equ 14
+start_row_col:   equ 0x0412
 
 %macro init_screen 0
 	clear_screen
-	mov dh, 3
-	mov cx, 18
+	mov dh, 3                        ; row
+	mov cx, 18                       ; number of rows
 ia: push cx
 	inc dh                           ; increment row
-	mov dl, 33                       ; set column
-	mov cx, 14                       ; width of box
-	mov bx, 0x77                     ; color
+	mov dl, field_left_col           ; set column
+	mov cx, field_width              ; width of box
+	mov bx, 0x88                     ; color
 	call set_and_write
 	cmp dh, 21                       ; don't remove last line
 	je ib                            ; if last line jump
 	inc dx                           ; increase column
-	mov cx, 12                       ; width of box
+	mov cx, inner_width              ; width of box
 	xor bx, bx                       ; color
 	call set_and_write
 ib: pop cx
@@ -81,7 +79,6 @@ ib: pop cx
 
 delay:      equ 0x7f00
 seed_value: equ 0x7f02
-cnt:        equ 0x7f04
 
 section .text
 
@@ -92,7 +89,7 @@ start_tetris:
 new_brick:
 	mov byte [delay], 100            ; 3 * 100 = 300ms
 	select_brick                     ; returns the selected brick in AL
-	mov dx, 0x0426                   ; start at row 4 and col 38
+	mov dx, start_row_col            ; start at row 4 and col 38
 loop:
 	call check_collision
 	jne $                            ; collision -> game over
@@ -184,8 +181,8 @@ set_and_read:
 ; DH = current row
 %macro replace_current_row 0
 	pusha                           ; replace current row with row above
- 	mov dl, 34
- 	mov cx, 12
+ 	mov dl, inner_first_col
+ 	mov cx, inner_width
 cf_aa:
 	push cx
 	dec dh                          ; decrement row
@@ -207,8 +204,8 @@ next_row:
 	dec dh                           ; decrement row
 	jz cf_done                       ; at row 0 we are done
 	xor bx, bx
-	mov cx, 12                       ; 12 columns
-	mov dl, 34                       ; start at column 34
+	mov cx, inner_width
+	mov dl, inner_first_col          ; start at first inner column
 cf_loop:
 	call set_and_read
 	shr ah, 4                        ; rotate to get background color in AH
@@ -217,7 +214,7 @@ cf_loop:
 	inc dx                           ; go to next column
 cf_is_zero:
 	loop cf_loop
-	cmp bl, 12                       ; if counter is 12 full we found a full row
+	cmp bl, inner_width              ; if counter is 12 full we found a full row
 	jne next_row
 replace_next_row:                    ; replace current row with rows above
 	replace_current_row
@@ -228,26 +225,14 @@ cf_done:
 	popa
 	ret
 
-;color
-;10010000b
-
-;00001000
-;00010000
-;00011000
-;00100000
-;00101000
-;00110000
-;00111000
-
-
 clear_brick:
 	xor bx, bx
 	jmp print_brick_no_color
-print_brick:  ; al = 0AAAABBB
+print_brick:  ; al = 0AAAARR0
 	mov bl, al                   ; select the right color
-	shl bl, 1                    ; ((bl >> 3) + 9) << 4
-	and bl, 11110000b
-	add bl, 144
+	shr bl, 3
+	inc bx
+	shl bl, 4
 print_brick_no_color:
 	inc bx                       ; set least significant bit
 	mov di, bx
@@ -263,7 +248,7 @@ check_collision_main:            ; DI = 1 -> check, 0 -> print
 	mov bl, al
 	mov ax, word [bricks + bx]
 
-	xor bx, bx                   ; set BH = BL = 0
+	xor bx, bx                   ; BH = page number, BL = collision counter
 	mov cx, 4
 cc:
 	push cx
@@ -271,14 +256,12 @@ cc:
 dd:
 	test ah, 10000000b
 	jz is_zero
+
 	push ax
-
 	or di, di
-	jz ee                        ; jump if we just want to check for collisions
-
-	; print space with color stored in DI at postion DX
-	pusha
-	mov bx, di
+	jz ee                        ; we just want to check for collisions
+	pusha                        ; print space with color stored in DI
+	mov bx, di                   ; at position in DX
 	xor al, al
 	mov cx, 1
 	call set_and_write
@@ -291,6 +274,7 @@ ee:
 	inc bx
 is_zero_a:
 	pop ax
+
 is_zero:
 	shl ax, 1                    ; move to next bit in brick mask
 	inc dx                       ; move to next column
@@ -304,31 +288,6 @@ is_zero:
 	ret
 
 ; ==============================================================================
-
-; in : AX = brick pattern
-; out: BC = new brick pattern
-; ABCD    DHLP
-; EFGH    CGKO
-; IJKL    BFJN
-; MNOP    AEIM
-; in : AX = ABCD EFGH IJKL MNOP
-; out: BX = DHLP CGKO BFJN AEIM
-%macro rotate 0
-	xor bx, bx
-	mov dx, 0001000000000000b
-rr: push dx
-ww: test ax, dx
-	jz qq
-	inc bx
-qq: shl bx, 1
-	shr dx, 4
-	jnz ww
-	pop dx
-	shl dx, 1
-	jnz rr
-%endmacro
-
-
 
 bricks:
 	;  in AL      in AH
