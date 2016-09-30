@@ -8,6 +8,7 @@
 
 ; TODO position in memory
 ; TODO current brick in memory
+; TODO highscore (persist on disc)
 
 	org 7c00h
 
@@ -304,10 +305,30 @@ is_zero:
 
 ; ==============================================================================
 
+; in : AX = brick pattern
+; out: BC = new brick pattern
 ; ABCD    DHLP
 ; EFGH    CGKO
 ; IJKL    BFJN
 ; MNOP    AEIM
+; in : AX = ABCD EFGH IJKL MNOP
+; out: BX = DHLP CGKO BFJN AEIM
+%macro rotate 0
+	xor bx, bx
+	mov dx, 0001000000000000b
+rr: push dx
+ww: test ax, dx
+	jz qq
+	inc bx
+qq: shl bx, 1
+	shr dx, 4
+	jnz ww
+	pop dx
+	shl dx, 1
+	jnz rr
+%endmacro
+
+
 
 bricks:
 	;  in AL      in AH
