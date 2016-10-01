@@ -13,6 +13,25 @@ And this is the complete machine code:
 
 ![TetrOS - Machine code](https://github.com/daniel-e/mbr_tetris/blob/master/code.png)
 
+## Running TetrOS
+
+There are two ways to run TetrOS. Either in an emulator like qemu or via a
+the boot sector of a real disk, USB stick or some other media.
+
+### Running via qemu
+
+Simply run `make run`. This will execute qemu with the right parameters to
+run TetrOS.
+
+### Running via an USB stick
+
+First, copy the image to an USB stick. For example, if your USB stick is
+on /dev/sde use the following command to overwrite the first sector of the USB stick with the TetrOS image: 
+
+`sudo dd if=tetros.img of=/dev/sde`
+
+After that you should be able to boot the stick to play TetrOS.
+
 ## Features
 * Each brick shape has a unique color.
 * Blinking cursor is not visible.
