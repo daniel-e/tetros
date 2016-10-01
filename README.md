@@ -1,12 +1,17 @@
 # TetrOS
 TetrOS is a small *feature rich* Tetris clone which is written in Assembly.
 It fits completely into a 512 byte boot sector and is executed during the
-boot sequence. It does not need any existing operating system. TetrOS is its own
-operating system, hence the suffix OS in its name.
+boot sequence before any operating system is loaded. It does not need any
+existing operating system. TetrOS is its own operating system, hence the suffix
+OS in its name.
 
 This is how it looks like:
 
 ![TetrOS - Tetris in 512 byte boot sector](https://github.com/daniel-e/mbr_tetris/blob/master/tetros_tetris_screenshot.png)
+
+And this is how the machine code looks:
+
+![TetrOS - Machine code](https://github.com/daniel-e/mbr_tetris/blob/master/code.png)
 
 ## Features
 * Each brick shape has a unique color.
@@ -21,6 +26,11 @@ This is how it looks like:
 ## Features missing due to size limits
 * Scores and highscores.
 * Intro.
-* Game over message.
+* Game over message and restart without rebooting.
 * Show next brick.
 * Increase speed.
+
+## Similar projects
+* https://github.com/dbittman/bootris
+* https://github.com/Shikhin/tetranglix
+* http://olivier.poudade.free.fr/src/BootChess.asm
