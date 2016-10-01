@@ -3,11 +3,11 @@ TetrOS is a small *feature rich* Tetris clone which is written in Assembly. It f
 
 This is how it looks like:
 
-![TetrOS - Tetris in 512 byte boot sector](https://github.com/daniel-e/mbr_tetris/blob/master/tetros_tetris_screenshot.png)
+![TetrOS - Tetris in 512 byte boot sector](https://github.com/daniel-e/mbr_tetris/blob/master/screenshots/tetros_tetris_screenshot.png)
 
 And this is the complete machine code:
 
-![TetrOS - Machine code](https://github.com/daniel-e/mbr_tetris/blob/master/code.png)
+![TetrOS - Machine code](https://github.com/daniel-e/mbr_tetris/blob/master/screenshots/code.png)
 
 ## Running TetrOS
 
