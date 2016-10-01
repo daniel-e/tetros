@@ -1,9 +1,5 @@
 # TetrOS
-TetrOS is a small *feature rich* Tetris clone which is written in Assembly.
-It fits completely into a 512 byte boot sector and is executed during the
-boot sequence before any operating system is loaded. It does not need any
-existing operating system. TetrOS is its own operating system, hence the suffix
-OS in its name.
+TetrOS is a small *feature rich* Tetris clone which is written in Assembly. It fits completely into a 512 byte boot sector as it requires only 446 bytes (which is the maximum allowed size of a boot loader for a valid master boot record (MBR)) and is executed during the boot sequence before any operating system is loaded. Actually, it does not need any existing operating system. TetrOS is its own operating system, hence the suffix OS in its name.
 
 This is how it looks like:
 
@@ -26,7 +22,7 @@ run TetrOS.
 ### Running via an USB stick
 
 First, copy the image to an USB stick. For example, if your USB stick is
-on /dev/sde use the following command to overwrite the first sector of the USB stick with the TetrOS image: 
+on /dev/sde use the following command to overwrite the first sector of the USB stick with the TetrOS image:
 
 `sudo dd if=tetros.img of=/dev/sde`
 
