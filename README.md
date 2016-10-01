@@ -9,7 +9,7 @@ This is how it looks like:
 
 ![TetrOS - Tetris in 512 byte boot sector](https://github.com/daniel-e/mbr_tetris/blob/master/tetros_tetris_screenshot.png)
 
-And this is how the machine code looks:
+And this the complete machine code:
 
 ![TetrOS - Machine code](https://github.com/daniel-e/mbr_tetris/blob/master/code.png)
 

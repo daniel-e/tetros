@@ -8,7 +8,7 @@ tetros.img: tetros.asm Makefile
 		rm -f tetros.img; exit 1; fi
 	nasm -f bin tetros.asm -o tetros.img
 
-run:
+run: tetros.img
 	@qemu-system-i386 -drive file=tetros.img,index=0,media=disk,format=raw
 
 clean:
