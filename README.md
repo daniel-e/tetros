@@ -5,6 +5,10 @@ This is how it looks like:
 
 ![TetrOS - Tetris in 512 byte boot sector](https://github.com/daniel-e/mbr_tetris/blob/master/screenshots/tetros_tetris_screenshot.png)
 
+In action:
+
+[![TetrOS - Teris in 512 byte boot sector](http://img.youtube.com/vi/Hl7M7f-Hh78/0.jpg)](https://youtu.be/Hl7M7f-Hh78)
+
 And this is the complete machine code:
 
 ![TetrOS - Machine code](https://github.com/daniel-e/mbr_tetris/blob/master/screenshots/code.png)
