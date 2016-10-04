@@ -1,10 +1,6 @@
 # TetrOS
 TetrOS is a small *feature rich* Tetris clone which is written in Assembly. It fits completely into a 512 byte boot sector as it requires only 446 bytes (which is the maximum allowed size of the first stage boot loader in the master boot record (MBR) of a drive) and is executed during the boot sequence before any operating system is loaded. Actually, it does not need any existing operating system. TetrOS *is* an operating system, hence the suffix OS in its name.
 
-This is how it looks like:
-
-![TetrOS - Tetris in 512 byte boot sector](https://github.com/daniel-e/mbr_tetris/blob/master/screenshots/tetros_tetris_screenshot.png)
-
 Video that shows TetrOS in action:
 
 [![TetrOS - Teris in 512 byte boot sector](http://img.youtube.com/vi/Hl7M7f-Hh78/0.jpg)](https://youtu.be/Hl7M7f-Hh78)
