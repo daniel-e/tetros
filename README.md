@@ -42,6 +42,14 @@ After that you should be able to boot the stick to play TetrOS.
 * Show next brick.
 * Increase speed.
 
+## Compiling the sources
+
+The repository already contains an image which you can use for testing. However, if you want to compile the image from the sources you need nasm, a general prupose x86 assembler to be installed on your system. On Ubuntu you can can install it via the command `sudo apt-get install nasm`.
+
+If `nasm` is installed you can compile the sources by executing `make`. This will create the image `tetros.img`. After that you can run the image via qemu or you can copy the image via `dd` on an USB disk or a disk (see above).
+
+I have tested it with nasm 2.11.08 on Ubuntu 16.04.
+
 ## Similar projects
 * https://github.com/dbittman/bootris
 * https://github.com/Shikhin/tetranglix
