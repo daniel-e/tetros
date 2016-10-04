@@ -90,7 +90,7 @@ new_brick:
 	mov byte [delay], 100            ; 3 * 100 = 300ms
 	select_brick                     ; returns the selected brick in AL
 	mov dx, start_row_col            ; start at row 4 and col 38
-loop:
+lp:
 	call check_collision
 	jne $                            ; collision -> game over
 	call print_brick
@@ -154,7 +154,7 @@ no_key:
 	call clear_brick
 	inc dh                       ; increase row
 	call check_collision
-	je loop                      ; no collision
+	je lp                        ; no collision
 	dec dh
 	call print_brick
 	call check_filled
@@ -253,7 +253,7 @@ check_collision_main:            ; DI = 1 -> check, 0 -> print
 cc:
 	push cx
 	mov cl, 4
-dd:
+zz:
 	test ah, 10000000b
 	jz is_zero
 
@@ -278,7 +278,7 @@ is_zero_a:
 is_zero:
 	shl ax, 1                    ; move to next bit in brick mask
 	inc dx                       ; move to next column
-	loop dd
+	loop zz
 	sub dl, 4                    ; reset column
 	inc dh                       ; move to next row
 	pop cx
