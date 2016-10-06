@@ -44,7 +44,7 @@ After that you should be able to boot the stick to play TetrOS.
 
 ## Compiling the sources
 
-The repository already contains an image which you can use for testing. However, if you want to compile the image from the sources you need nasm, a general prupose x86 assembler to be installed on your system. On Ubuntu you can can install it via the command `sudo apt-get install nasm`.
+The repository already contains an image which you can use for testing. However, if you want to compile the image from the sources you need nasm, a general prupose x86 assembler to be installed on your system. On Ubuntu you can can install it via the command `sudo apt-get install nasm`. On macOS you will need [homebrew](http://brew.sh/) to install `nasm` and `binutils`.
 
 If `nasm` is installed you can compile the sources by executing `make`. This will create the image `tetros.img`. After that you can run the image via qemu or you can copy the image via `dd` on an USB disk or a disk (see above).
 
