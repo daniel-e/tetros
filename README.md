@@ -55,3 +55,8 @@ I have tested it with nasm 2.11.08 on Ubuntu 16.04.
 * https://github.com/Shikhin/tetranglix
 * http://olivier.poudade.free.fr/src/BootChess.asm
 * https://github.com/programble/tetrasm - Tetris for x86 in NASM but which does not fit into the boot sector.
+
+## Acknowledgements
+I would like to thank the following persons for contributing to TetrOS.
+* [DraftYeti5608](https://github.com/DraftYeti5608)
+* [Ivoah](https://github.com/Ivoah)
